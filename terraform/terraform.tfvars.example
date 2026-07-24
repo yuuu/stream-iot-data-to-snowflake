@@ -1,0 +1,13 @@
+# Copy this file to terraform.tfvars (gitignored) and fill in the real values.
+# See README.md "Snowflakeの事前準備" for how to obtain each value.
+
+aws_profile = "your-aws-profile"
+
+snowflake_organization_name = "your-organization-name"
+snowflake_account_name      = "your-account-name"
+snowflake_admin_user        = "TF_ADMIN_USER"
+snowflake_admin_private_key = <<EOT
+-----BEGIN PRIVATE KEY-----
+...
+-----END PRIVATE KEY-----
+EOT
