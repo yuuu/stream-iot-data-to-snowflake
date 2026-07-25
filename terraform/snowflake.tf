@@ -21,7 +21,7 @@ locals {
 }
 
 resource "snowflake_database" "iot" {
-  name    = "IOT_DB"
+  name    = "IOT_STREAM_IOT_DB"
   comment = "IoTデバイスから収集したテレメトリを格納するデータベース"
 }
 
@@ -37,7 +37,7 @@ resource "snowflake_execute" "env_sensor_raw_table" {
 }
 
 resource "snowflake_account_role" "firehose_ingest" {
-  name    = "FIREHOSE_INGEST_ROLE"
+  name    = "IOT_STREAM_FIREHOSE_INGEST_ROLE"
   comment = "Kinesis Data FirehoseがENV_SENSOR_RAWへINSERTするためのロール"
 }
 
@@ -73,7 +73,7 @@ resource "snowflake_grant_privileges_to_account_role" "firehose_ingest_table" {
 }
 
 resource "snowflake_service_user" "firehose_ingest" {
-  name           = "FIREHOSE_INGEST_USER"
+  name           = "IOT_STREAM_FIREHOSE_INGEST_USER"
   comment        = "Kinesis Data Firehoseがキーペア認証で使用するサービスユーザー"
   rsa_public_key = local.firehose_public_key_oneline
   default_role   = snowflake_account_role.firehose_ingest.name

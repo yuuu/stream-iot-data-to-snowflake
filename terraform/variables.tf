@@ -30,8 +30,7 @@ variable "snowflake_admin_user" {
   type        = string
 }
 
-variable "snowflake_admin_private_key" {
-  description = "Unencrypted PKCS8 private key (PEM) for snowflake_admin_user"
+variable "snowflake_admin_private_key_path" {
+  description = "Path to the unencrypted PKCS8 private key (PEM) file for snowflake_admin_user"
   type        = string
-  sensitive   = true
 }

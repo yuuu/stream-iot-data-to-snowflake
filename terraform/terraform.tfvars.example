@@ -3,11 +3,7 @@
 
 aws_profile = "your-aws-profile"
 
-snowflake_organization_name = "your-organization-name"
-snowflake_account_name      = "your-account-name"
-snowflake_admin_user        = "TF_ADMIN_USER"
-snowflake_admin_private_key = <<EOT
------BEGIN PRIVATE KEY-----
-...
------END PRIVATE KEY-----
-EOT
+snowflake_organization_name      = "your-organization-name"
+snowflake_account_name           = "your-account-name"
+snowflake_admin_user             = "IOT_STREAM_TF_ADMIN_USER"
+snowflake_admin_private_key_path = "/absolute/path/to/tf_admin_key.p8"
