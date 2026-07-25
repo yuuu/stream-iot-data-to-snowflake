@@ -69,7 +69,7 @@ resource "aws_iot_topic_rule" "env_sensor_to_firehose" {
   name        = "${replace(var.project_name, "-", "_")}_to_firehose"
   description = "Forward env-sensor telemetry to Kinesis Data Firehose"
   enabled     = true
-  sql         = "SELECT * FROM '${var.project_name}/#'"
+  sql         = "SELECT *, timestamp() AS event_timestamp, topic(2) AS device_id FROM '${var.project_name}/#'"
   sql_version = "2016-03-23"
 
   firehose {

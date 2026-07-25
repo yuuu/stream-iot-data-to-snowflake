@@ -32,7 +32,7 @@ resource "snowflake_schema" "env_sensor" {
 
 # 執筆時点(2026-07)では snowflake_table は Preview 機能のため、Stable な snowflake_execute で代替する
 resource "snowflake_execute" "env_sensor_raw_table" {
-  execute = "CREATE TABLE ${local.env_sensor_table_fqn} (temperature FLOAT, humidity FLOAT, pressure FLOAT)"
+  execute = "CREATE TABLE ${local.env_sensor_table_fqn} (temperature FLOAT, humidity FLOAT, pressure FLOAT, event_timestamp NUMBER, device_id VARCHAR)"
   revert  = "DROP TABLE ${local.env_sensor_table_fqn}"
 }
 
