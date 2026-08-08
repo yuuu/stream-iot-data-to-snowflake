@@ -7,3 +7,6 @@ snowflake_organization_name      = "your-organization-name"
 snowflake_account_name           = "your-account-name"
 snowflake_admin_user             = "IOT_STREAM_TF_ADMIN_USER"
 snowflake_admin_private_key_path = "/absolute/path/to/tf_admin_key.p8"
+
+# 実機に書き込み済みのAWS IoT証明書ARN(aws_iot_certificateはimport非対応のためTerraform管理外)
+device_certificate_arn = "arn:aws:iot:<region>:<account-id>:cert/<certificate-id>"

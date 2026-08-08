@@ -26,8 +26,10 @@ resource "snowflake_database" "iot" {
 }
 
 resource "snowflake_schema" "env_sensor" {
-  database = snowflake_database.iot.name
-  name     = "ENV_SENSOR"
+  database            = snowflake_database.iot.name
+  name                = "ENV_SENSOR"
+  is_transient        = false
+  with_managed_access = false
 }
 
 # 執筆時点(2026-07)では snowflake_table は Preview 機能のため、Stable な snowflake_execute で代替する
