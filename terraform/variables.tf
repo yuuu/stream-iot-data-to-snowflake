@@ -34,3 +34,8 @@ variable "snowflake_admin_private_key_path" {
   description = "Path to the unencrypted PKCS8 private key (PEM) file for snowflake_admin_user"
   type        = string
 }
+
+variable "device_certificate_arn" {
+  description = "ARN of the existing AWS IoT certificate attached to the device (created outside Terraform; see README)"
+  type        = string
+}

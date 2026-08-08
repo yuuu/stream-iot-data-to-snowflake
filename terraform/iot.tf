@@ -18,24 +18,13 @@ resource "aws_iot_thing" "env_sensor" {
   name = "${var.project_name}-device"
 }
 
-# CSRを指定しないと、AWS側で鍵ペアと証明書を生成して返してくれる
-resource "aws_iot_certificate" "env_sensor" {
-  active = true
-}
-
-resource "local_sensitive_file" "device_certificate" {
-  content  = aws_iot_certificate.env_sensor.certificate_pem
-  filename = "${path.module}/certs/device-certificate.pem.crt"
-}
-
-resource "local_sensitive_file" "device_private_key" {
-  content  = aws_iot_certificate.env_sensor.private_key
-  filename = "${path.module}/certs/device-private.pem.key"
-}
-
+# NOTE: aws_iot_certificate はAWSプロバイダの仕様上importに対応していない。
+# 初回構築時にCSRなしで作成した証明書(秘密鍵はAWS側で作成時のみ発行され、以後取得不可)を
+# 実機に書き込み済みのため、証明書自体は再発行せずTerraform管理外とし、
+# ARNをvar.device_certificate_arnとして固定値参照する。
 resource "aws_iot_thing_principal_attachment" "env_sensor" {
   thing     = aws_iot_thing.env_sensor.name
-  principal = aws_iot_certificate.env_sensor.arn
+  principal = var.device_certificate_arn
 }
 
 # env-sensor.ino では MQTT の clientID が "env-sensor-device" に固定されている
@@ -61,7 +50,7 @@ resource "aws_iot_policy" "env_sensor" {
 
 resource "aws_iot_policy_attachment" "env_sensor" {
   policy = aws_iot_policy.env_sensor.name
-  target = aws_iot_certificate.env_sensor.arn
+  target = var.device_certificate_arn
 }
 
 # env-sensor.ino がトピック "env-sensor/<chip-id>" に publish したメッセージを Firehose へ転送する
