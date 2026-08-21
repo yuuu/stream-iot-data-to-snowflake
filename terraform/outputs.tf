@@ -19,6 +19,10 @@ output "snowflake_table" {
   value = local.env_sensor_table_fqn
 }
 
+output "snowflake_hourly_avg_table" {
+  value = local.env_sensor_hourly_avg_table_fqn
+}
+
 output "device_certs_dir" {
   description = "arduino_secrets.h に転記する証明書・秘密鍵の出力先"
   value       = "${path.module}/certs"
