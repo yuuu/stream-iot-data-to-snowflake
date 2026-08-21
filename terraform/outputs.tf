@@ -27,3 +27,24 @@ output "device_certs_dir" {
   description = "arduino_secrets.h に転記する証明書・秘密鍵の出力先"
   value       = "${path.module}/certs"
 }
+
+output "rds_endpoint" {
+  description = "RDS PostgreSQLインスタンスの接続エンドポイント(ホスト名)"
+  value       = aws_db_instance.sensor_master.address
+}
+
+output "rds_master_password" {
+  description = "RDSマスターユーザーのパスワード(terraform output -raw rds_master_password で取得)"
+  value       = random_password.sensor_master.result
+  sensitive   = true
+}
+
+output "snowflake_sensor_master_table" {
+  description = "Openflow Connector for PostgreSQLが作成する取り込み先テーブル(初回スナップショット完了後に存在)"
+  value       = local.sensor_master_table_fqn
+}
+
+output "snowflake_hourly_avg_enriched_table" {
+  description = "センサー値とマスターデータをJOINしたDynamic Table"
+  value       = local.env_sensor_hourly_avg_enriched_table_fqn
+}
