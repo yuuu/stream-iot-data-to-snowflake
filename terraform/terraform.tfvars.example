@@ -10,3 +10,12 @@ snowflake_admin_private_key_path = "/absolute/path/to/tf_admin_key.p8"
 
 # 実機に書き込み済みのAWS IoT証明書ARN(aws_iot_certificateはimport非対応のためTerraform管理外)
 device_certificate_arn = "arn:aws:iot:<region>:<account-id>:cert/<certificate-id>"
+
+# RDS PostgreSQL(sensorsマスターテーブル)への接続を許可するCIDR。
+# 事前にSnowflakeで `SELECT SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES();` を実行し、
+# 返ってきた ipv4_prefix を列挙する(初回のみ手動。以降はegress_ip_sync.tfのTaskが自動更新)。
+# psqlでの手動セットアップのため、自分の作業端末のIP(/32)も忘れずに含めること。
+rds_allowed_cidr_blocks = [
+  "203.0.113.0/24",  # Snowflakeの静的Egress IPの例
+  "198.51.100.1/32", # 作業端末のグローバルIPの例
+]
