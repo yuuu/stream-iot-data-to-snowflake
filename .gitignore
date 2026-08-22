@@ -21,5 +21,8 @@ certs/
 *.key
 *.p8
 
+# real seed data for RDS (sensor_id/name/location can be personal info)
+terraform/sql/seed_data.sql
+
 # macOS
 .DS_Store

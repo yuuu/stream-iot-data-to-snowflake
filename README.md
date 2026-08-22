@@ -39,6 +39,8 @@ terraform/
 ├── dynamic_table.tf          # 1時間毎の集計用Warehouse・Dynamic Table
 ├── rds.tf                    # センサーマスター用RDS(PostgreSQL)、SG、パラメータグループ
 ├── sql/sensors.sql           # sensorsテーブル・publication作成SQL(psqlで手動実行。Terraform管理外)
+├── sql/seed_data.sql.example # 実データ(sensor_id/name/location)投入SQLのテンプレート
+│                             # (コピー先のsql/seed_data.sqlはgitignore対象)
 ├── sensor_master.tf          # Openflow Connector for PostgreSQL用のWarehouse/Role/User/Network Rule/EAI
 ├── egress_ip_sync.tf         # SnowflakeのEgress IPをRDSのSGへ自動同期するAWS Lambda + EventBridge
 ├── lambda/egress_ip_sync.py  # 上記Lambdaの本体(snowflake-connector-pythonでキーペア認証・SQL実行)
@@ -164,15 +166,20 @@ terraform apply
 
 `terraform apply` 完了後、`terraform output` でRDSのエンドポイントを確認し、`terraform/sql/sensors.sql` を参考にマスターユーザーで手動実行します。
 
+実データ(`sensor_id`/`name`/`location`)は個人情報になり得るため`sensors.sql`には含めていません。`sql/seed_data.sql.example` を `sql/seed_data.sql`(gitignore対象)としてコピーし、実際の値を書き込んでください。
+
 ```bash
+cp sql/seed_data.sql.example sql/seed_data.sql
+# sql/seed_data.sql を実際の値に編集する
+
 terraform output rds_endpoint
 terraform output -raw rds_master_password
 
 psql "host=<rds_endpoint> port=5432 dbname=<sensors_db_name> user=<postgres_master_username> sslmode=require" \
-  -f sql/sensors.sql
+  -f sql/sensors.sql -f sql/seed_data.sql
 ```
 
-`sql/sensors.sql` 内の `REPLACE_ME_*` は実際の値(デバイスのchip-id、レプリケーションユーザーのパスワードなど)に置き換えてから実行してください。
+`sql/sensors.sql` 内の `REPLACE_ME_*`(レプリケーションユーザーのパスワードなど)は実際の値に置き換えてから実行してください。
 
 ### 3. Openflow - Snowflake Deployment / Runtime の作成(Snowsight UI)
 

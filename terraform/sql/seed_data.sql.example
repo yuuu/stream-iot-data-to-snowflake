@@ -1,0 +1,8 @@
+-- Copy this file to seed_data.sql (gitignored) and fill in the real values.
+-- Run together with sensors.sql (see sensors.sql for the psql command).
+--
+-- sensor_id は env-sensor.ino が publish するトピック "env-sensor/<chip-id>" の <chip-id> 部分
+-- (= ENV_SENSOR_RAW.device_id) に合わせること。
+INSERT INTO sensors (sensor_id, name, location) VALUES
+    ('REPLACE_ME_CHIP_ID', 'REPLACE_ME_NAME', 'REPLACE_ME_LOCATION')
+ON CONFLICT (sensor_id) DO NOTHING;
