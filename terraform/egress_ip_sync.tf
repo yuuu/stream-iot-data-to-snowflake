@@ -60,9 +60,11 @@ resource "aws_ssm_parameter" "egress_ip_reader_private_key" {
 }
 
 # --- AWS: Lambdaのビルド ---
-# cryptography/pyjwtはネイティブ拡張(cryptography)を含むため、ホスト環境に関わらず
-# Lambdaランタイム(python3.13, manylinux2014_x86_64)向けのプリビルド済みwheelをpipで取得し、
-# Lambda本体と一緒にzip化する。terraform applyを実行する環境にpip(python3)が必要。
+# snowflake-connector-pythonはネイティブ拡張(cryptography, nanoarrow)を含むため、ホスト環境に
+# 関わらずLambdaランタイム(python3.13, manylinux2014_x86_64)向けのプリビルド済みwheelをpipで
+# 取得し、Lambda本体と一緒にzip化する。terraform applyを実行する環境にpip(python3)が必要。
+# boto3/botocore/s3transfer/jmespathはLambdaランタイムに標準同梱されているため、
+# パッケージを軽くするためにインストール後に取り除く(実行時はランタイム側のものが使われる)。
 resource "null_resource" "egress_ip_sync_build" {
   triggers = {
     source_hash       = filesha256("${path.module}/lambda/egress_ip_sync.py")
@@ -72,13 +74,17 @@ resource "null_resource" "egress_ip_sync_build" {
   provisioner "local-exec" {
     command = <<-EOT
       set -eu
-      rm -rf "${path.module}/build/egress_ip_sync"
-      mkdir -p "${path.module}/build/egress_ip_sync"
+      BUILD_DIR="${path.module}/build/egress_ip_sync"
+      rm -rf "$BUILD_DIR"
+      mkdir -p "$BUILD_DIR"
       pip install --no-cache-dir \
         --platform manylinux2014_x86_64 --implementation cp --python-version 3.13 --only-binary=:all: \
-        --target "${path.module}/build/egress_ip_sync" \
+        --target "$BUILD_DIR" \
         -r "${path.module}/lambda/requirements.txt"
-      cp "${path.module}/lambda/egress_ip_sync.py" "${path.module}/build/egress_ip_sync/"
+      rm -rf "$BUILD_DIR"/boto3 "$BUILD_DIR"/botocore "$BUILD_DIR"/s3transfer "$BUILD_DIR"/jmespath \
+        "$BUILD_DIR"/boto3-*.dist-info "$BUILD_DIR"/botocore-*.dist-info \
+        "$BUILD_DIR"/s3transfer-*.dist-info "$BUILD_DIR"/jmespath-*.dist-info
+      cp "${path.module}/lambda/egress_ip_sync.py" "$BUILD_DIR/"
     EOT
   }
 }
@@ -155,8 +161,7 @@ resource "aws_lambda_function" "egress_ip_sync" {
     variables = {
       SECURITY_GROUP_ID                    = aws_security_group.sensor_master.id
       SNOWFLAKE_PRIVATE_KEY_PARAMETER_NAME = aws_ssm_parameter.egress_ip_reader_private_key.name
-      SNOWFLAKE_ACCOUNT_URL                = "https://${var.snowflake_organization_name}-${var.snowflake_account_name}.snowflakecomputing.com"
-      SNOWFLAKE_ACCOUNT_IDENTIFIER         = upper("${var.snowflake_organization_name}-${var.snowflake_account_name}")
+      SNOWFLAKE_ACCOUNT                    = "${var.snowflake_organization_name}-${var.snowflake_account_name}"
       SNOWFLAKE_USER                       = snowflake_service_user.egress_ip_reader.name
       SNOWFLAKE_WAREHOUSE                  = snowflake_warehouse.openflow_ingest.name
       SNOWFLAKE_ROLE                       = snowflake_account_role.egress_ip_reader.name

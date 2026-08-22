@@ -1,5 +1,8 @@
-# cryptography/pyjwtはネイティブ拡張(cryptography)を含むため、terraform apply時に
+# snowflake-connector-pythonにキーペアJWTの生成・SQL実行を委譲する。
+# ネイティブ拡張(cryptography, nanoarrow)を含むため、terraform apply時に
 # Lambdaランタイム(python3.13, manylinux2014_x86_64)向けのプリビルド済みwheelを取得する。
 # egress_ip_sync.tfのnull_resource.egress_ip_sync_build参照。
-cryptography>=42,<46
-pyjwt>=2.8,<3
+#
+# boto3/botocore/s3transfer/jmespathはLambdaランタイムに標準同梱されているため、
+# ビルドステップでインストール後に除外する(ここには含めない)。
+snowflake-connector-python>=3.14,<5

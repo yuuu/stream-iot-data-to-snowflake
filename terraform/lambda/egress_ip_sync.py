@@ -2,131 +2,53 @@
 SnowflakeのEgress IP(SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES())を取得し、
 RDS(sensor_master)のセキュリティグループのingressルールへ同期するLambda。
 
-Snowflake認証にはキーペア(RSA)+ JWTを使う。秘密鍵はSSM Parameter Store(SecureString)に
+Snowflake認証にはキーペア(RSA)を使う。秘密鍵はSSM Parameter Store(SecureString)に
 保存されており、このLambdaはSnowflakeへの読み取り専用アクセスしか持たない
 (SGを書き換える権限はLambdaの実行ロール側にのみ存在する)。
 
-キーペアにはPATと異なり有効期限がないため、失効に伴う定期再発行の運用は不要。
+JWTの構築・SQL実行は公式のsnowflake-connector-pythonに委譲する。boto3/botocore/
+s3transfer/jmespathはLambdaランタイムに標準同梱されているため、ビルド時に
+パッケージから除外している(egress_ip_sync.tf, requirements.txt参照)。
 """
 
-import base64
-import hashlib
 import json
 import os
-import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 
 import boto3
-import jwt
-from cryptography.hazmat.primitives.serialization import (
-    Encoding,
-    PublicFormat,
-    load_pem_private_key,
-)
+import snowflake.connector
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 PORT = int(os.environ.get("POSTGRES_PORT", "5432"))
 SECURITY_GROUP_ID = os.environ["SECURITY_GROUP_ID"]
 SSM_PARAMETER_NAME = os.environ["SNOWFLAKE_PRIVATE_KEY_PARAMETER_NAME"]
-ACCOUNT_URL = os.environ["SNOWFLAKE_ACCOUNT_URL"]  # 例: https://<org>-<account>.snowflakecomputing.com
-ACCOUNT_IDENTIFIER = os.environ["SNOWFLAKE_ACCOUNT_IDENTIFIER"]  # 例: <ORG>-<ACCOUNT>(大文字)
+SNOWFLAKE_ACCOUNT = os.environ["SNOWFLAKE_ACCOUNT"]  # 例: <org>-<account>
 SNOWFLAKE_USER = os.environ["SNOWFLAKE_USER"]
 WAREHOUSE = os.environ["SNOWFLAKE_WAREHOUSE"]
 ROLE = os.environ["SNOWFLAKE_ROLE"]
-
-JWT_LIFETIME_SECONDS = 55 * 60  # Snowflakeの推奨上限(1時間)より少し短くしておく
-POLL_INTERVAL_SECONDS = 1
-MAX_POLL_ATTEMPTS = 30
 
 ssm = boto3.client("ssm")
 ec2 = boto3.client("ec2")
 
 
-def _public_key_fingerprint(private_key) -> str:
-    # SnowflakeのJWT認証はiss/subに、公開鍵(X.509 SubjectPublicKeyInfo形式)のSHA256
-    # フィンガープリントを含めることを要求する。
-    public_key_der = private_key.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
-    digest = hashlib.sha256(public_key_der).digest()
-    return "SHA256:" + base64.b64encode(digest).decode("ascii")
-
-
-def _build_jwt(private_key_pem: str) -> str:
-    private_key = load_pem_private_key(private_key_pem.encode(), password=None)
-    fingerprint = _public_key_fingerprint(private_key)
-
-    qualified_username = f"{ACCOUNT_IDENTIFIER}.{SNOWFLAKE_USER}"
-    now = int(time.time())
-
-    payload = {
-        "iss": f"{qualified_username}.{fingerprint}",
-        "sub": qualified_username,
-        "iat": now,
-        "exp": now + JWT_LIFETIME_SECONDS,
-    }
-
-    return jwt.encode(payload, private_key, algorithm="RS256")
-
-
-def _call_sql_api(token):
-    body = json.dumps(
-        {
-            "statement": "SELECT SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES() AS RANGES",
-            "warehouse": WAREHOUSE,
-            "role": ROLE,
-            "timeout": 30,
-        }
-    ).encode("utf-8")
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "X-Snowflake-Authorization-Token-Type": "KEYPAIR_JWT",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-
-    req = urllib.request.Request(
-        url=f"{ACCOUNT_URL}/api/v2/statements",
-        data=body,
-        method="POST",
-        headers=headers,
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        status = resp.status
-        payload = json.loads(resp.read())
-
-    # SQL APIは処理に時間がかかる場合、202とstatementHandleを返し非同期実行になる。
-    # このクエリは軽量なため通常は即時応答だが、念のためポーリングに対応しておく。
-    attempts = 0
-    while status == 202 and attempts < MAX_POLL_ATTEMPTS:
-        time.sleep(POLL_INTERVAL_SECONDS)
-        handle = payload["statementHandle"]
-        poll_req = urllib.request.Request(
-            url=f"{ACCOUNT_URL}/api/v2/statements/{handle}",
-            method="GET",
-            headers=headers,
-        )
-        with urllib.request.urlopen(poll_req, timeout=30) as resp:
-            status = resp.status
-            payload = json.loads(resp.read())
-        attempts += 1
-
-    if status not in (200, 202):
-        raise RuntimeError(f"Snowflake SQL API returned unexpected status {status}: {payload}")
-
-    return payload
-
-
 def fetch_egress_ip_ranges():
     private_key_pem = ssm.get_parameter(Name=SSM_PARAMETER_NAME, WithDecryption=True)["Parameter"]["Value"]
-    token = _build_jwt(private_key_pem)
+    private_key = load_pem_private_key(private_key_pem.encode(), password=None)
 
+    conn = snowflake.connector.connect(
+        account=SNOWFLAKE_ACCOUNT,
+        user=SNOWFLAKE_USER,
+        private_key=private_key,
+        warehouse=WAREHOUSE,
+        role=ROLE,
+    )
     try:
-        payload = _call_sql_api(token)
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Snowflake SQL API request failed: {e.code} {e.read()}") from e
+        cur = conn.cursor()
+        cur.execute("SELECT SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES() AS RANGES")
+        raw = cur.fetchone()[0]
+    finally:
+        conn.close()
 
-    raw = payload["data"][0][0]
     ranges = json.loads(raw) if isinstance(raw, str) else raw
 
     now = datetime.now(timezone.utc)

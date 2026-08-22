@@ -41,7 +41,7 @@ terraform/
 ├── sql/sensors.sql           # sensorsテーブル・publication作成SQL(psqlで手動実行。Terraform管理外)
 ├── sensor_master.tf          # Openflow Connector for PostgreSQL用のWarehouse/Role/User/Network Rule/EAI
 ├── egress_ip_sync.tf         # SnowflakeのEgress IPをRDSのSGへ自動同期するAWS Lambda + EventBridge
-├── lambda/egress_ip_sync.py  # 上記Lambdaの本体(cryptography/pyjwtでキーペアJWTを生成)
+├── lambda/egress_ip_sync.py  # 上記Lambdaの本体(snowflake-connector-pythonでキーペア認証・SQL実行)
 ├── dynamic_table_enriched.tf # ENV_SENSOR_HOURLY_AVGとSENSOR_MASTER.SENSORSをJOINしたDynamic Table
 └── outputs.tf
 ```
@@ -122,7 +122,9 @@ SELECT SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES();
 
 この初期値は最初の `terraform apply` にのみ使われます。以降は `egress_ip_sync.tf` で作成するAWS Lambda(EventBridgeで週次起動)がこの関数を再実行し、RDSのセキュリティグループを自動的に最新のIPレンジへ同期します。
 
-このLambdaはSnowflakeへの認証にキーペア(RSA)+ JWTを使い、SGを書き換える権限はLambdaの実行ロール(IAMロール)側だけに持たせています。Snowflake側の認証情報(秘密鍵)は「`SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES()`を呼べるだけ」の最小権限ユーザーのものなので、万一SSM Parameter Store経由で漏洩してもAWSリソースには波及しません(Snowflake -> AWSではなく、あえてAWS -> Snowflakeの向きにしている理由です)。Programmatic Access Tokenではなくキーペアを選んでいるのは、PATには有効期限があり定期的な再発行が必要になるのに対し、キーペア自体には有効期限がなく運用の手間が増えないためです。
+このLambdaはSnowflakeへの認証にキーペア(RSA)を使い、SGを書き換える権限はLambdaの実行ロール(IAMロール)側だけに持たせています。Snowflake側の認証情報(秘密鍵)は「`SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES()`を呼べるだけ」の最小権限ユーザーのものなので、万一SSM Parameter Store経由で漏洩してもAWSリソースには波及しません(Snowflake -> AWSではなく、あえてAWS -> Snowflakeの向きにしている理由です)。Programmatic Access Tokenではなくキーペアを選んでいるのは、PATには有効期限があり定期的な再発行が必要になるのに対し、キーペア自体には有効期限がなく運用の手間が増えないためです。
+
+キーペア認証によるJWT生成やSQL実行は自前実装せず、公式の`snowflake-connector-python`に委譲しています(Snowflakeが提供するSQL API向けサンプルもキーペア部分は`cryptography`/`pyjwt`による自前実装であり、認証だけを肩代わりする軽量なSDKは提供されていません。それを含む唯一の公式手段がフルのコネクタです)。コネクタは以前は`pyarrow`同梱でLambdaに載せるには大きすぎましたが、nanoarrow化以降は現実的なサイズになっています。ただしコネクタが依存する`boto3`/`botocore`/`s3transfer`/`jmespath`はLambdaランタイムに標準同梱されているため、ビルド後に取り除いてパッケージを軽くしています(除いても実行時はランタイム側のものが解決されるため問題ありません)。
 
 ### Openflow - Snowflake Deployments の準備(Core Snowflake)
 
@@ -197,5 +199,5 @@ terraform apply
 - `terraform apply` はAWS・Snowflake双方で実際にリソースを作成し、課金が発生します。不要になったら `terraform destroy` してください。
 - RDSインスタンスはデモ用途のため `publicly_accessible = true` としています。セキュリティグループで5432番ポートへのアクセス元をSnowflakeの静的Egress IPと自分の作業端末IPに限定していますが、本番用途ではAWS PrivateLink(Business Critical Edition限定)等の非公開接続を検討してください。
 - Snowflakeの静的Egress IPは90日で失効します。初回の `rds_allowed_cidr_blocks` は手動設定が必要ですが、以降は `egress_ip_sync.tf` のAWS Lambda(EventBridgeで週次起動)がRDSのセキュリティグループを自動的に最新のIPレンジへ同期します。実行状況はCloudWatch Logs(`/aws/lambda/<project_name>-egress-ip-sync`)から確認できます。
-- `egress_ip_sync.tf` のLambdaパッケージ(cryptography/pyjwt)は `terraform apply` 実行時に `pip install --platform manylinux2014_x86_64 ...` でビルドされます。ビルドを実行する環境にインターネット接続と `pip`(python3)が必要です。
+- `egress_ip_sync.tf` のLambdaパッケージ(`snowflake-connector-python`)は `terraform apply` 実行時に `pip install --platform manylinux2014_x86_64 ...` でビルドされます。ビルドを実行する環境にインターネット接続と `pip`(python3)が必要です。
 - Openflow Connector for PostgreSQLの同期スケジュール(マージ頻度)はコネクタ側の設定に依存します。`ENV_SENSOR_HOURLY_AVG_ENRICHED` のTARGET_LAGだけでなく、コネクタ側のマージスケジュールも確認してください。
