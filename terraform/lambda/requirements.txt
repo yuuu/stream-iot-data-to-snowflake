@@ -1,0 +1,5 @@
+# cryptography/pyjwtはネイティブ拡張(cryptography)を含むため、terraform apply時に
+# Lambdaランタイム(python3.13, manylinux2014_x86_64)向けのプリビルド済みwheelを取得する。
+# egress_ip_sync.tfのnull_resource.egress_ip_sync_build参照。
+cryptography>=42,<46
+pyjwt>=2.8,<3

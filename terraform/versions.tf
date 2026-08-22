@@ -26,5 +26,13 @@ terraform {
       source  = "hashicorp/local"
       version = "~> 2.5"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.7"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
   }
 }
