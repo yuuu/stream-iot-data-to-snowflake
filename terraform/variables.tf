@@ -44,8 +44,9 @@ variable "rds_allowed_cidr_blocks" {
   description = <<-EOT
     CIDR blocks allowed to reach the RDS PostgreSQL instance on port 5432.
     Seed this with the output of `SELECT SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES();` (run once, before the first apply)
-    plus your own IP for manual psql access. After the first apply, the egress_ip_sync.tf Snowflake Task keeps the
-    security group in sync automatically (see README), so this variable only matters for the initial bootstrap.
+    plus your own IP for manual psql access. After the first apply, the egress_ip_sync.tf Lambda (scheduled weekly)
+    keeps the security group in sync automatically (see README), so this variable only matters for the initial
+    bootstrap.
   EOT
   type        = list(string)
 }
