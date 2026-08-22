@@ -13,7 +13,7 @@ device_certificate_arn = "arn:aws:iot:<region>:<account-id>:cert/<certificate-id
 
 # RDS PostgreSQL(sensorsマスターテーブル)への接続を許可するCIDR。
 # 事前にSnowflakeで `SELECT SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES();` を実行し、
-# 返ってきた ipv4_prefix を列挙する(初回のみ手動。以降はegress_ip_sync.tfのLambdaが自動更新)。
+# 返ってきた ipv4_prefix を列挙する(初回のみ手動。以降はegress_ip_sync.tfのTaskが自動更新)。
 # psqlでの手動セットアップのため、自分の作業端末のIP(/32)も忘れずに含めること。
 rds_allowed_cidr_blocks = [
   "203.0.113.0/24",  # Snowflakeの静的Egress IPの例
