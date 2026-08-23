@@ -2,16 +2,19 @@
 
 M5Stack(ENV3ユニット)で計測した温度・湿度・気圧データを、AWS IoT Core → Kinesis Data Firehose → Snowpipe Streaming 経由でSnowflakeへストリーミング・蓄積するためのTerraform構成です。
 蓄積したデータはDynamic Tableでdevice_id・1時間単位に集計し、1時間毎の平均値を保持します。
+また、ENV_SENSOR_RAWのTEMPERATUREが30度を超えた行をSnowflake Alertで検知し、ログテーブルへの記録とメール通知を行います。
 
 構築の過程は以下の記事にまとめています。
 
 - (執筆中)IoTデバイスで収集したデータをAWS経由でSnowflakeへ配信・蓄積する方法
 - (執筆中)Snowflake Dynamic tablesを使ってIoTデバイスから収集したデータをELTする
+- (執筆中)Snowflake Alertを使ってIoTデバイスから収集したデータのしきい値超過を検知する
 
 ## 構成
 
 ```
 M5Stack(ENV3) --MQTT/TLS--> AWS IoT Core --IoT Rule--> Kinesis Data Firehose --Snowpipe Streaming--> Snowflake(ENV_SENSOR_RAW) --Dynamic Table--> ENV_SENSOR_HOURLY_AVG
+                                                                                       └--Alert(TEMPERATURE > 30)--> ENV_SENSOR_TEMPERATURE_ALERT_LOG / メール通知
 ```
 
 デバイス側のソースコードは https://github.com/yuuu/aws-m5stack-iot-handson-book-site/tree/main/device を利用しています。
@@ -27,6 +30,7 @@ terraform/
 ├── firehose.tf       # Kinesis Data Firehose(Snowflake destination), S3, IAM
 ├── snowflake.tf      # Snowflake側のDatabase/Schema/Table/Role/Service User
 ├── dynamic_table.tf  # 1時間毎の集計用Warehouse・Dynamic Table
+├── alert.tf          # TEMPERATURE超過検知用Warehouse・Alert・ログテーブル・Notification Integration
 └── outputs.tf
 ```
 
@@ -68,6 +72,10 @@ GRANT CREATE ROLE ON ACCOUNT TO ROLE IOT_STREAM_TF_ADMIN_ROLE;
 GRANT CREATE USER ON ACCOUNT TO ROLE IOT_STREAM_TF_ADMIN_ROLE;
 GRANT MANAGE GRANTS ON ACCOUNT TO ROLE IOT_STREAM_TF_ADMIN_ROLE;
 GRANT CREATE WAREHOUSE ON ACCOUNT TO ROLE IOT_STREAM_TF_ADMIN_ROLE;
+
+-- Alert(alert.tf)用。EXECUTE ALERT / CREATE INTEGRATION はACCOUNTADMINのみが付与できる
+GRANT EXECUTE ALERT ON ACCOUNT TO ROLE IOT_STREAM_TF_ADMIN_ROLE;
+GRANT CREATE INTEGRATION ON ACCOUNT TO ROLE IOT_STREAM_TF_ADMIN_ROLE;
 ```
 
 アカウント識別子は以下で確認できます。
@@ -75,6 +83,12 @@ GRANT CREATE WAREHOUSE ON ACCOUNT TO ROLE IOT_STREAM_TF_ADMIN_ROLE;
 ```sql
 SELECT CURRENT_ORGANIZATION_NAME() AS org_name, CURRENT_ACCOUNT_NAME() AS account_name;
 ```
+
+### Alertのメール通知先アドレスの準備
+
+SnowflakeのEmail Notification Integrationは、そのアカウント上で**メール検証済みのユーザーのアドレス**にしか送信できません。
+通知を受け取りたいユーザーでSnowsightにログインし、右上のユーザーメニュー → 「プロフィール」からメールアドレスを登録・検証しておいてください。
+検証済みのアドレスを `terraform.tfvars` の `alert_notification_email` に設定します。
 
 ### AWS IoT証明書の準備
 
@@ -99,6 +113,57 @@ terraform init
 terraform plan
 terraform apply
 ```
+
+## Alertの動作確認
+
+`terraform apply` 直後はAlertはRESUME済み(有効)ですが、`SCHEDULE = '1 MINUTE'` で評価されるため反映まで最大1分程度かかります。
+
+このAlertは**エッジ検知**(device_idごとに「直前の行は30度以下、今回は30度超」となった立ち上がりの瞬間だけ)で通知するため、単に30度超のデータを1件INSERTするだけでは、直前の行がすでに30度超だと検知されません(実機のデータが継続的に30度を超えている場合に毎分通知され続けるのを防ぐための設計。詳細は`alert.tf`のコメント参照)。動作確認には「30度以下→30度超」の2行を挿入してください。
+
+1. しきい値をまたぐデータを2件挿入します(`event_timestamp`は前後関係が分かればよいので数秒ずらしています)。
+
+   ```sql
+   USE WAREHOUSE IOT_STREAM_ALERT_WH;
+
+   INSERT INTO IOT_STREAM_IOT_DB.ENV_SENSOR.ENV_SENSOR_RAW
+     (temperature, humidity, pressure, event_timestamp, device_id)
+   VALUES
+     (25.0, 50.0, 1013.0, DATE_PART(EPOCH_MILLISECOND, CURRENT_TIMESTAMP()), 'test-device');
+
+   INSERT INTO IOT_STREAM_IOT_DB.ENV_SENSOR.ENV_SENSOR_RAW
+     (temperature, humidity, pressure, event_timestamp, device_id)
+   VALUES
+     (35.0, 50.0, 1013.0, DATE_PART(EPOCH_MILLISECOND, CURRENT_TIMESTAMP()) + 1000, 'test-device');
+   ```
+
+2. Alertの実行履歴を確認します(`ALERT_NAME`はスキーマ修飾名で指定、`USE DATABASE`しておくとINFORMATION_SCHEMA関数を素直に呼べます)。
+
+   ```sql
+   USE DATABASE IOT_STREAM_IOT_DB;
+   USE WAREHOUSE IOT_STREAM_ALERT_WH;
+
+   SELECT NAME, STATE, SCHEDULED_TIME, COMPLETED_TIME
+   FROM TABLE(INFORMATION_SCHEMA.ALERT_HISTORY(
+     SCHEDULED_TIME_RANGE_START => DATEADD('hour', -1, CURRENT_TIMESTAMP()),
+     ALERT_NAME => 'IOT_STREAM_IOT_DB.ENV_SENSOR.IOT_STREAM_ENV_SENSOR_TEMPERATURE_ALERT'
+   ))
+   ORDER BY SCHEDULED_TIME DESC;
+   ```
+
+   `TRIGGERED`になっていれば検知成功、`CONDITION_FALSE`なら未検知(まだ実行タイミングが来ていないか、エッジが発生していない)です。
+
+3. ログテーブルに記録されていることを確認します。
+
+   ```sql
+   SELECT * FROM IOT_STREAM_IOT_DB.ENV_SENSOR.ENV_SENSOR_TEMPERATURE_ALERT_LOG ORDER BY alerted_at DESC;
+   ```
+
+4. `alert_notification_email` で指定したアドレスに、`DEVICE_ID=test-deviceの温度が30度を超えました。` という本文の通知メールが届いていることを確認します。
+
+### 詰まりどころ
+
+- **Alertを`terraform apply`で作り直す(=`execute`のSQL文言を変更する)たびに、Alertは一度SUSPENDEDな状態でCREATEされ直します。** `SNOWFLAKE.ALERT.LAST_SUCCESSFUL_SCHEDULED_TIME()`は「前回成功した実行時刻」が無い初回実行時には非常に古い時刻を返すため、対策なしだと初回実行でテーブルの全履歴分を一括検知・通知してしまいます(実機データが閾値付近で細かく上下する場合は特に顕著)。`alert.tf`では`GREATEST(...)`で下限を「最大5分前」にクランプすることでこれを防いでいます。
+- **RESUME用の`snowflake_execute`リソースは、Alert本体が置き換わってもSQL文言が変わらなければ再実行されません。** `alert.tf`ではAlert本体のリソースIDをコメントとして埋め込み、置き換えのたびに強制的に再実行されるようにしています。
 
 ## 注意事項
 

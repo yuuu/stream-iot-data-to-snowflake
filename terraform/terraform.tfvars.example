@@ -10,3 +10,6 @@ snowflake_admin_private_key_path = "/absolute/path/to/tf_admin_key.p8"
 
 # 実機に書き込み済みのAWS IoT証明書ARN(aws_iot_certificateはimport非対応のためTerraform管理外)
 device_certificate_arn = "arn:aws:iot:<region>:<account-id>:cert/<certificate-id>"
+
+# TEMPERATURE超過Alertの通知先メールアドレス(Snowsightでメール検証済みのユーザーのものを指定)
+alert_notification_email = "you@example.com"

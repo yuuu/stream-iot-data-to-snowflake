@@ -39,3 +39,8 @@ variable "device_certificate_arn" {
   description = "ARN of the existing AWS IoT certificate attached to the device (created outside Terraform; see README)"
   type        = string
 }
+
+variable "alert_notification_email" {
+  description = "TEMPERATURE超過Alertの通知先メールアドレス。このSnowflakeアカウント上でメール検証済みのユーザーのものである必要がある(see README)"
+  type        = string
+}
