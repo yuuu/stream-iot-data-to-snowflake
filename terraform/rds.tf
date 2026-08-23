@@ -20,15 +20,15 @@ resource "aws_db_subnet_group" "sensor_master" {
 
 # Openflow Connector for PostgreSQL(Snowflake Deployments/SPCS)からの接続元は、
 # Snowflakeが提供する静的Egress IP(SYSTEM$GET_SNOWFLAKE_EGRESS_IP_RANGES())。
-# このIPは90日で失効するため、egress_ip_sync.tfのSnowflake Taskが週次で自動的に
+# このIPは90日で失効するため、egress_ip_sync.tfのAWS Lambdaが週次で自動的に
 # ingressルールを最新のIPレンジへ同期する。
 resource "aws_security_group" "sensor_master" {
   name        = "${var.project_name}-sensor-master-sg"
-  description = "Allow inbound PostgreSQL from Snowflake Openflow's static egress IPs"
+  description = "Allow inbound PostgreSQL from Snowflake Openflow static egress IPs"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "PostgreSQL from Snowflake Openflow static egress IPs (kept in sync by egress_ip_sync.tf's task)"
+    description = "PostgreSQL from Snowflake Openflow static egress IPs (kept in sync by egress_ip_sync.tf Lambda)"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
@@ -43,7 +43,7 @@ resource "aws_security_group" "sensor_master" {
   }
 
   lifecycle {
-    # ingressはegress_ip_sync.tfのSnowflake Taskが実行時にAWS APIで直接書き換える。
+    # ingressはegress_ip_sync.tfのAWS Lambdaが実行時にEC2 APIで直接書き換える。
     # ここでの初期値との差分でterraform applyのたびに巻き戻さないようにする。
     ignore_changes = [ingress]
   }
