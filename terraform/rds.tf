@@ -6,16 +6,21 @@ data "aws_vpc" "default" {
   default = true
 }
 
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+# RDSのサブネットグループは最低2AZ分のサブネットを要求する。デフォルトVPCに
+# 一部AZのデフォルトサブネットが存在しないアカウントでも動くよう、
+# aws_default_subnetで(無ければ作成・あれば引き継ぐ形で)確保する。
+resource "aws_default_subnet" "sensor_master" {
+  for_each          = toset(slice(data.aws_availability_zones.available.names, 0, 2))
+  availability_zone = each.value
 }
 
 resource "aws_db_subnet_group" "sensor_master" {
   name       = "${var.project_name}-sensor-master"
-  subnet_ids = data.aws_subnets.default.ids
+  subnet_ids = [for s in aws_default_subnet.sensor_master : s.id]
 }
 
 # Openflow Connector for PostgreSQL(Snowflake Deployments/SPCS)からの接続元は、
