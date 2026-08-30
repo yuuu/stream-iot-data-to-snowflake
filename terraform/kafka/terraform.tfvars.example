@@ -1,0 +1,16 @@
+# Copy this file to terraform.tfvars (gitignored) and fill in the real values.
+
+aws_profile = "your-aws-profile"
+aws_region  = "ap-northeast-1"
+
+# CIDR blocks allowed to SSH into the bastion (your work terminal's global IP, office ranges, ...)
+# In this repo the same values are used as terraform/terraform.tfvars:rds_allowed_cidr_blocks.
+ssh_allowed_cidr_blocks = [
+  "203.0.113.10/32",
+]
+
+# --- フェーズ2-c: Snowflake(親 terraform/terraform.tfvars と同じ値でよい) ---
+snowflake_organization_name     = "your-org"
+snowflake_account_name          = "your-account"
+snowflake_admin_user            = "IOT_STREAM_TF_ADMIN_USER"
+snowflake_admin_private_key_path = "/absolute/path/to/tf_admin_key.p8"

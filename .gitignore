@@ -3,7 +3,11 @@
 *.tfstate
 *.tfstate.*
 tfplan
+tfplan-*
 *.tfplan
+
+# downloaded MSK Connect plugin artifacts (large jars, fetched by terraform_data)
+terraform/kafka/build/
 crash.log
 crash.*.log
 *.tfvars
@@ -19,6 +23,14 @@ certs/
 *.pem
 *.key
 *.p8
+
+# Karafka local dev
+karafka/.env
+karafka/.bundle/
+karafka/vendor/
+
+# セッション固有の検証ログ(IP/PID/ARN 等を含む。PR には含めない)
+WORK_NOTES_kafka.md
 
 # macOS
 .DS_Store
