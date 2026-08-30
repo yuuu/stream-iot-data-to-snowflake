@@ -1,0 +1,7 @@
+source "https://rubygems.org"
+
+# Ruby 製 Kafka コンシューマフレームワーク。MSK(SASL/SCRAM)を購読する。
+gem "karafka", "~> 2.4"
+
+# .env からローカル検証用の認証情報を読み込む(値はコミットしない)
+gem "dotenv", "~> 3.1"
